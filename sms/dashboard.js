@@ -4,6 +4,7 @@ const _supabase = supabase.createClient(_SB_URL, _SB_KEY);
 
 let currentUserID, currentUserRole, currentUserName;
 let myChart = null;
+let attendanceChart = null; // New global for trend chart
 
 // Professional Helpers
 const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A';
@@ -157,7 +158,6 @@ async function saveQuickRemark() {
 }
 
 async function loadRemarks() {
-    // FIX 2: Corrected table name to 'grades' to match your insert logic
     const { data } = await _supabase.from('grades').select('*, students!inner(name, teacher_id)').not('remark', 'is', null);
     const filtered = currentUserRole === 'admin' ? data : (data || []).filter(d => d.students.teacher_id === currentUserID);
     
@@ -221,11 +221,10 @@ async function refreshDashboard() {
         document.getElementById('stat-attendance').innerText = Math.round((pres / count) * 100) + "%";
     } else document.getElementById('stat-attendance').innerText = "0%";
     
-    calculateTopStudent(); updateZigzag(); updateRisk();
+    calculateTopStudent(); updateZigzag(); updateRisk(); updateAttendanceTrend();
 }
 
 async function calculateTopStudent() {
-    // FIX 3: Consistent table name 'grades'
     let qG = _supabase.from('grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)').neq('subject', 'BEHAVIOUR');
     if (currentUserRole !== 'admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: grades } = await qG;
@@ -239,6 +238,52 @@ async function calculateTopStudent() {
     let top = "N/A", max = 0;
     Object.values(map).forEach(s => { let a = s.s / s.c; if (a > max) { max = a; top = s.n; } });
     document.getElementById('stat-top-student').innerText = top;
+}
+
+// --- ATTENDANCE TREND CHART ---
+async function updateAttendanceTrend() {
+    const last7Days = [...Array(7)].map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return d.toISOString().split('T')[0];
+    }).reverse();
+
+    let qA = _supabase.from('attendance').select('date, status, students!inner(teacher_id)');
+    if (currentUserRole !== 'admin') qA = qA.eq('students.teacher_id', currentUserID);
+    const { data: attHistory } = await qA.in('date', last7Days);
+
+    let qS = _supabase.from('students').select('*', { count: 'exact', head: true });
+    if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
+    const { count: totalStds } = await qS;
+
+    const dailyPercents = last7Days.map(date => {
+        const dayAtt = (attHistory || []).filter(a => a.date === date && a.status === 'present').length;
+        return totalStds > 0 ? Math.round((dayAtt / totalStds) * 100) : 0;
+    });
+
+    const ctx = document.getElementById('attendanceSparkline').getContext('2d');
+    if (attendanceChart) attendanceChart.destroy();
+    attendanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: last7Days,
+            datasets: [{
+                data: dailyPercents,
+                borderColor: '#10b981',
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: true,
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
 }
 
 // --- ATTENDANCE ---
@@ -283,7 +328,6 @@ async function loadGrades() {
     const { data: stds } = await qS; 
     document.getElementById('grade-student-select').innerHTML = stds.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     
-    // FIX 4: Filter out behaviour remarks from the academic grades list
     let qG = _supabase.from('grades').select('*, students!inner(name, teacher_id)').neq('subject', 'BEHAVIOUR');
     if(currentUserRole!=='admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: gs } = await qG;
@@ -307,12 +351,29 @@ async function loadGrades() {
 
 document.getElementById('form-add-grade').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const sid = document.getElementById('grade-student-select').value;
+    const subj = document.getElementById('grade-subject').value;
+    const cScore = Number(document.getElementById('class-score').value);
+    const eScore = Number(document.getElementById('exam-score').value);
+    const total = cScore + eScore;
+
+    // AUTO-REMARK LOGIC: If score is below 50, auto-generate a behavior remark
+    if (total < 50) {
+        await _supabase.from('grades').insert([{ 
+            student_id: sid, 
+            subject: "BEHAVIOUR", 
+            remark: `SYSTEM ALERT: Poor academic performance in ${subj} (${total}%). Intervention required.`,
+            class_score: 0, exam_score: 0 
+        }]);
+    }
+
     await _supabase.from('grades').insert([{ 
-        student_id: document.getElementById('grade-student-select').value, 
-        subject: document.getElementById('grade-subject').value, 
-        class_score: Number(document.getElementById('class-score').value), 
-        exam_score: Number(document.getElementById('exam-score').value) 
+        student_id: sid, 
+        subject: subj, 
+        class_score: cScore, 
+        exam_score: eScore 
     }]);
+    
     toggleModal('modal-add-grade'); loadGrades(); refreshDashboard();
 });
 
