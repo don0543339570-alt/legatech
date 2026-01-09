@@ -191,7 +191,8 @@ async function refreshDashboard() {
 }
 
 async function calculateTopStudent() {
-    let qG = _supabase.from('grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)');
+    // UPDATED: Now points to academic_grades view so BEHAVIOUR remarks don't lower rank
+    let qG = _supabase.from('academic_grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)');
     if (currentUserRole !== 'admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: grades } = await qG;
     if (!grades || grades.length === 0) return document.getElementById('stat-top-student').innerText = "N/A";
@@ -264,7 +265,8 @@ async function loadAdminControls() {
 
 // --- VISUAL ANALYTICS ---
 async function updateZigzag() {
-    let q = _supabase.from('grades').select('subject, class_score, exam_score, students!inner(teacher_id)');
+    // UPDATED: Now uses academic_grades view so chart doesn't tank from remarks
+    let q = _supabase.from('academic_grades').select('subject, class_score, exam_score, students!inner(teacher_id)');
     if (currentUserRole !== 'admin') q = q.eq('students.teacher_id', currentUserID);
     const { data } = await q; if (!data || data.length === 0) return;
     const subs = {}; data.forEach(g => { const s = g.subject.toUpperCase(); if(!subs[s]) subs[s] = {t:0,c:0}; subs[s].t+=(g.class_score+g.exam_score); subs[s].c++; });
@@ -275,7 +277,8 @@ async function updateZigzag() {
 }
 
 async function updateRisk() {
-    let q = _supabase.from('grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)');
+    // UPDATED: Now uses academic_grades view to avoid false failure alerts
+    let q = _supabase.from('academic_grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)');
     if (currentUserRole !== 'admin') q = q.eq('students.teacher_id', currentUserID);
     const { data } = await q; const map = {}; (data || []).forEach(g => { if(!map[g.student_id]) map[g.student_id] = {n:g.students.name, s:0, c:0}; map[g.student_id].s+=(g.class_score+g.exam_score); map[g.student_id].c++; });
     const risks = Object.values(map).filter(x => (x.s/x.c) < 45);
