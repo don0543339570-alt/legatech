@@ -279,3 +279,29 @@ async function updateRisk() {
 }
 
 function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+// --- TEACHER REGISTRATION (FIX RELOAD) ---
+document.getElementById('form-add-teacher').addEventListener('submit', async (e) => {
+    e.preventDefault(); // This prevents the "Grant Access" button from reloading the page
+    
+    const name = document.getElementById('t-name').value;
+    const email = document.getElementById('t-email').value;
+    const password = document.getElementById('t-pass').value;
+
+    // Supabase Auth Signup (Creating the teacher account)
+    const { data, error } = await _supabase.auth.signUp({
+        email: email,
+        password: password,
+        options: { data: { full_name: name, role: 'teacher' } }
+    });
+
+    if (error) {
+        alert("Error: " + error.message);
+    } else {
+        // Create the profile entry
+        await _supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, role: 'teacher' }]);
+        alert("Teacher Access Granted Successfully!");
+        document.getElementById('form-add-teacher').reset();
+        loadStaffList();
+    }
+});
