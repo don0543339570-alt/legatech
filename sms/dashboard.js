@@ -150,7 +150,6 @@ async function saveQuickRemark() {
     const sid = document.getElementById('remark-target-id').value;
     const text = document.getElementById('quick-remark-text').value;
     if (!text) return;
-    // Using the 'grades' table but marking subject as BEHAVIOUR for remarks
     await _supabase.from('grades').insert([{ student_id: sid, subject: "BEHAVIOUR", remark: text, class_score: 0, exam_score: 0 }]);
     document.getElementById('quick-remark-text').value = "";
     toggleModal('modal-quick-remark');
@@ -240,7 +239,7 @@ async function calculateTopStudent() {
     document.getElementById('stat-top-student').innerText = top;
 }
 
-// --- ATTENDANCE TREND CHART ---
+// --- NEW: ATTENDANCE TREND (SPARKLINE) ---
 async function updateAttendanceTrend() {
     const last7Days = [...Array(7)].map((_, i) => {
         const d = new Date();
@@ -256,10 +255,13 @@ async function updateAttendanceTrend() {
     if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
     const { count: totalStds } = await qS;
 
-    const dailyPercents = last7Days.map(date => {
+    let dailyPercents = last7Days.map(date => {
         const dayAtt = (attHistory || []).filter(a => a.date === date && a.status === 'present').length;
         return totalStds > 0 ? Math.round((dayAtt / totalStds) * 100) : 0;
     });
+
+    // Fallback: If no history, show flat 0 line to indicate chart is ready
+    if (!attHistory || attHistory.length === 0) dailyPercents = [0, 0, 0, 0, 0, 0, 0];
 
     const ctx = document.getElementById('attendanceSparkline').getContext('2d');
     if (attendanceChart) attendanceChart.destroy();
@@ -357,12 +359,12 @@ document.getElementById('form-add-grade').addEventListener('submit', async (e) =
     const eScore = Number(document.getElementById('exam-score').value);
     const total = cScore + eScore;
 
-    // AUTO-REMARK LOGIC: If score is below 50, auto-generate a behavior remark
+    // AUTO-REMARK ALERT: Trigger if score is failing
     if (total < 50) {
         await _supabase.from('grades').insert([{ 
             student_id: sid, 
             subject: "BEHAVIOUR", 
-            remark: `SYSTEM ALERT: Poor academic performance in ${subj} (${total}%). Intervention required.`,
+            remark: `SYSTEM AUTO-ALERT: Performance drop in ${subj} (${total}%).`,
             class_score: 0, exam_score: 0 
         }]);
     }
@@ -458,10 +460,8 @@ async function updateRisk() {
         '<p class="text-[9px] text-emerald-500 font-black">ALL ACADEMIC GOALS MET</p>';
 }
 
-// --- UTILS ---
 function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
 
-// Teacher Registration
 document.getElementById('form-add-teacher').addEventListener('submit', async (e) => {
     e.preventDefault(); 
     const name = document.getElementById('t-name').value;
