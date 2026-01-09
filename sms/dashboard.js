@@ -112,7 +112,7 @@ document.getElementById('form-student').addEventListener('submit', async (e) => 
     toggleModal('modal-student'); loadStudentHub(); refreshDashboard();
 });
 
-// --- REMARKS (FIXED) ---
+// --- REMARKS (FIXED TO USE SQL VIEW) ---
 function openRemarkModal(sid, name) { 
     document.getElementById('remark-target-id').value = sid; 
     document.getElementById('remark-target-name').innerText = name; 
@@ -130,7 +130,8 @@ async function saveQuickRemark() {
 }
 
 async function loadRemarks() {
-    const { data } = await _supabase.from('grades').select('*, students!inner(name, teacher_id)').not('remark', 'is', null);
+    // UPDATED: Now points to the SQL VIEW 'behavioral_remarks'
+    const { data } = await _supabase.from('behavioral_remarks').select('*, students!inner(name, teacher_id)').not('remark', 'is', null);
     const filtered = currentUserRole === 'admin' ? data : (data || []).filter(d => d.students.teacher_id === currentUserID);
     document.getElementById('remarks-list').innerHTML = filtered.map(x => `
         <div class="p-6 flex justify-between items-center group">
@@ -222,11 +223,14 @@ async function markAt(sid, stat) {
     loadAttendanceList(); refreshDashboard();
 }
 
-// --- GRADES ---
+// --- GRADES (UPDATED TO USE SQL VIEW) ---
 async function loadGrades() {
     let qS = _supabase.from('students').select('id, name'); if(currentUserRole!=='admin') qS = qS.eq('teacher_id', currentUserID);
     const { data: stds } = await qS; document.getElementById('grade-student-select').innerHTML = stds.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    let qG = _supabase.from('grades').select('*, students!inner(name, teacher_id)');
+    
+    // UPDATED: Now points to the SQL VIEW 'academic_grades' (excludes BEHAVIOUR)
+    let qG = _supabase.from('academic_grades').select('*, students!inner(name, teacher_id)');
+    
     if(currentUserRole!=='admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: gs } = await qG;
     document.getElementById('grade-table-body').innerHTML = (gs || []).map(g => `
@@ -282,13 +286,12 @@ function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'
 
 // --- TEACHER REGISTRATION (FIX RELOAD) ---
 document.getElementById('form-add-teacher').addEventListener('submit', async (e) => {
-    e.preventDefault(); // This prevents the "Grant Access" button from reloading the page
+    e.preventDefault(); 
     
     const name = document.getElementById('t-name').value;
     const email = document.getElementById('t-email').value;
     const password = document.getElementById('t-pass').value;
 
-    // Supabase Auth Signup (Creating the teacher account)
     const { data, error } = await _supabase.auth.signUp({
         email: email,
         password: password,
@@ -298,7 +301,6 @@ document.getElementById('form-add-teacher').addEventListener('submit', async (e)
     if (error) {
         alert("Error: " + error.message);
     } else {
-        // Create the profile entry
         await _supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, role: 'teacher' }]);
         alert("Teacher Access Granted Successfully!");
         document.getElementById('form-add-teacher').reset();
