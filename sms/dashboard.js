@@ -4,19 +4,14 @@ const _supabase = supabase.createClient(_SB_URL, _SB_KEY);
 
 let currentUserID, currentUserRole, currentUserName;
 let myChart = null;
-let attendanceChart = null; // New global for trend chart
+let attendanceChart = null; 
 
 // Professional Helpers
 const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A';
-
-/**
- * FIX 1: Performance Color Classes
- * These match the .score-high, .score-mid, .score-low classes in your HTML <style>
- */
 const getScoreClass = (s) => {
-    if (s >= 75) return 'score-high'; // Green
-    if (s >= 50) return 'score-mid';  // Amber
-    return 'score-low';              // Red
+    if (s >= 75) return 'score-high'; 
+    if (s >= 50) return 'score-mid';  
+    return 'score-low';              
 };
 
 // --- AUTH ---
@@ -59,7 +54,6 @@ function showSection(name) {
     document.getElementById('btn-' + name).classList.add('active');
     document.getElementById('section-title').innerText = name.toUpperCase();
     
-    // Auto-refresh data on navigation
     if (name === 'dashboard') refreshDashboard();
     if (name === 'students') loadStudentHub();
     if (name === 'attendance') loadAttendanceList();
@@ -69,37 +63,115 @@ function showSection(name) {
     if (name === 'admin') loadStaffList();
 }
 
-// --- CORE CRUD ---
-async function deleteItem(table, id, callback) {
-    if (!confirm("Are you sure? This cannot be undone.")) return;
-    const { error } = await _supabase.from(table).delete().eq('id', id);
-    if (error) alert(error.message); 
-    else { 
-        callback(); 
-        refreshDashboard(); 
+// --- DASHBOARD & ANALYTICS ---
+async function refreshDashboard() {
+    // 1. Update Smart Agenda HUD
+    await updateSmartAgenda();
+
+    // 2. Load Core Stats
+    let qS = _supabase.from('students').select('*', { count: 'exact', head: false });
+    if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
+    const { count } = await qS;
+    document.getElementById('stat-students').innerText = count || 0;
+
+    const today = new Date().toISOString().split('T')[0];
+    let qA = _supabase.from('attendance').select('status, students!inner(teacher_id)').eq('date', today);
+    if (currentUserRole !== 'admin') qA = qA.eq('students.teacher_id', currentUserID);
+    const { data: attData } = await qA;
+    
+    if (attData && attData.length > 0 && count > 0) {
+        const pres = attData.filter(a => a.status.toLowerCase() === 'present').length;
+        document.getElementById('stat-attendance').innerText = Math.round((pres / count) * 100) + "%";
+    } else document.getElementById('stat-attendance').innerText = "0%";
+    
+    // 3. Update Visuals
+    calculateTopStudent(); 
+    updateZigzag(); 
+    updateRisk(); 
+    updateAttendanceTrend();
+}
+
+async function updateSmartAgenda() {
+    const hud = document.getElementById('smart-agenda-hud');
+    let html = '';
+
+    if (currentUserRole === 'admin') {
+        const { data: reqs } = await _supabase.from('requests').select('id').eq('status', 'pending');
+        const { data: profs } = await _supabase.from('profiles').select('id').eq('role', 'teacher');
+        html = `
+            <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-500 text-white rounded-xl flex items-center justify-center shadow-lg"><i class="fas fa-bell"></i></div>
+                <div><p class="text-[9px] font-black text-indigo-400 uppercase italic">Admin Alert</p><p class="text-xs font-bold text-indigo-900">${reqs?.length || 0} Pending Approvals</p></div>
+            </div>
+            <div class="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-center gap-3">
+                <div class="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-lg"><i class="fas fa-chalkboard-teacher"></i></div>
+                <div><p class="text-[9px] font-black text-amber-400 uppercase italic">Staff</p><p class="text-xs font-bold text-amber-900">${profs?.length || 0} Faculty Members</p></div>
+            </div>`;
+    } else {
+        const { data: lowGrades } = await _supabase.from('grades').select('student_id, students!inner(teacher_id)').lt('class_score', 15).eq('students.teacher_id', currentUserID);
+        const alertCount = [...new Set(lowGrades?.map(r => r.student_id))].length;
+        html = `
+            <div class="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3">
+                <div class="w-10 h-10 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-lg"><i class="fas fa-exclamation-circle"></i></div>
+                <div><p class="text-[9px] font-black text-rose-400 uppercase italic">Critical</p><p class="text-xs font-bold text-rose-900">${alertCount} Student Alerts</p></div>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center gap-3">
+                <div class="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg"><i class="fas fa-shield-alt"></i></div>
+                <div><p class="text-[9px] font-black text-emerald-400 uppercase italic">Security</p><p class="text-xs font-bold text-emerald-900">Encrypted Session</p></div>
+            </div>`;
     }
+    hud.innerHTML = html;
 }
 
-// --- STUDENT REGISTRY ---
-function openEnrollModal() {
-    document.getElementById('student-modal-title').innerText = "Enroll Student";
-    document.getElementById('student-btn-text').innerText = "Finalize";
-    document.getElementById('edit-std-id').value = "";
-    document.getElementById('form-student').reset();
-    toggleModal('modal-student');
+async function updateAttendanceTrend() {
+    const last7Days = [...Array(7)].map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return d.toISOString().split('T')[0];
+    }).reverse();
+
+    let qA = _supabase.from('attendance').select('date, status, students!inner(teacher_id)');
+    if (currentUserRole !== 'admin') qA = qA.eq('students.teacher_id', currentUserID);
+    const { data: attHistory } = await qA.in('date', last7Days);
+
+    let qS = _supabase.from('students').select('*', { count: 'exact', head: true });
+    if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
+    const { count: totalStds } = await qS;
+
+    let dailyPercents = last7Days.map(date => {
+        const dayAtt = (attHistory || []).filter(a => a.date === date && a.status === 'present').length;
+        return totalStds > 0 ? Math.round((dayAtt / totalStds) * 100) : 0;
+    });
+
+    const canvas = document.getElementById('attendanceSparkline');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (attendanceChart) attendanceChart.destroy();
+    
+    attendanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: last7Days,
+            datasets: [{
+                data: dailyPercents,
+                borderColor: '#10b981',
+                borderWidth: 2,
+                pointRadius: 2,
+                fill: true,
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false, min: -10, max: 110 } },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
 }
 
-async function openEditStudent(id) {
-    const { data } = await _supabase.from('students').select('*').eq('id', id).single();
-    document.getElementById('student-modal-title').innerText = "Edit Record";
-    document.getElementById('student-btn-text').innerText = "Update";
-    document.getElementById('edit-std-id').value = data.id;
-    document.getElementById('std-name').value = data.name;
-    document.getElementById('std-grade').value = data.grade_level;
-    if (currentUserRole === 'admin') document.getElementById('std-teacher-assign').value = data.teacher_id;
-    toggleModal('modal-student');
-}
-
+// --- STUDENT HUB (Remained Unchanged) ---
 async function loadStudentHub(filterT = 'all') {
     const today = new Date().toISOString().split('T')[0];
     let q = _supabase.from('students').select('*');
@@ -126,20 +198,44 @@ async function loadStudentHub(filterT = 'all') {
     }).join('');
 }
 
+// --- CORE FUNCTIONS (Remained Unchanged) ---
+async function deleteItem(table, id, callback) {
+    if (!confirm("Are you sure? This cannot be undone.")) return;
+    const { error } = await _supabase.from(table).delete().eq('id', id);
+    if (error) alert(error.message); 
+    else { callback(); refreshDashboard(); }
+}
+
+function openEnrollModal() {
+    document.getElementById('student-modal-title').innerText = "Enroll Student";
+    document.getElementById('student-btn-text').innerText = "Finalize";
+    document.getElementById('edit-std-id').value = "";
+    document.getElementById('form-student').reset();
+    toggleModal('modal-student');
+}
+
+async function openEditStudent(id) {
+    const { data } = await _supabase.from('students').select('*').eq('id', id).single();
+    document.getElementById('student-modal-title').innerText = "Edit Record";
+    document.getElementById('student-btn-text').innerText = "Update";
+    document.getElementById('edit-std-id').value = data.id;
+    document.getElementById('std-name').value = data.name;
+    document.getElementById('std-grade').value = data.grade_level;
+    if (currentUserRole === 'admin') document.getElementById('std-teacher-assign').value = data.teacher_id;
+    toggleModal('modal-student');
+}
+
 document.getElementById('form-student').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('edit-std-id').value;
     const name = document.getElementById('std-name').value;
     const grade = document.getElementById('std-grade').value;
     const tId = currentUserRole === 'admin' ? document.getElementById('std-teacher-assign').value : currentUserID;
-    
     if (id) await _supabase.from('students').update({ name, grade_level: grade, teacher_id: tId }).eq('id', id);
     else await _supabase.from('students').insert([{ name, grade_level: grade, teacher_id: tId }]);
-    
     toggleModal('modal-student'); loadStudentHub(); refreshDashboard();
 });
 
-// --- REMARKS ---
 function openRemarkModal(sid, name) { 
     document.getElementById('remark-target-id').value = sid; 
     document.getElementById('remark-target-name').innerText = name; 
@@ -159,7 +255,6 @@ async function saveQuickRemark() {
 async function loadRemarks() {
     const { data } = await _supabase.from('grades').select('*, students!inner(name, teacher_id)').not('remark', 'is', null);
     const filtered = currentUserRole === 'admin' ? data : (data || []).filter(d => d.students.teacher_id === currentUserID);
-    
     document.getElementById('remarks-list').innerHTML = filtered.map(x => `
         <div class="p-6 flex justify-between items-center group border-b last:border-0">
             <div>
@@ -171,7 +266,6 @@ async function loadRemarks() {
         </div>`).join('');
 }
 
-// --- REQUESTS ---
 document.getElementById('form-add-request').addEventListener('submit', async (e) => {
     e.preventDefault();
     const sub = document.getElementById('req-subject').value;
@@ -203,32 +297,11 @@ async function loadPermissions() {
 
 async function handleRequest(id, stat) { await _supabase.from('requests').update({ status: stat }).eq('id', id); loadPermissions(); }
 
-// --- DASHBOARD & ANALYTICS ---
-async function refreshDashboard() {
-    let qS = _supabase.from('students').select('*', { count: 'exact', head: false });
-    if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
-    const { count } = await qS;
-    document.getElementById('stat-students').innerText = count || 0;
-
-    const today = new Date().toISOString().split('T')[0];
-    let qA = _supabase.from('attendance').select('status, students!inner(teacher_id)').eq('date', today);
-    if (currentUserRole !== 'admin') qA = qA.eq('students.teacher_id', currentUserID);
-    const { data: attData } = await qA;
-    
-    if (attData && attData.length > 0 && count > 0) {
-        const pres = attData.filter(a => a.status.toLowerCase() === 'present').length;
-        document.getElementById('stat-attendance').innerText = Math.round((pres / count) * 100) + "%";
-    } else document.getElementById('stat-attendance').innerText = "0%";
-    
-    calculateTopStudent(); updateZigzag(); updateRisk(); updateAttendanceTrend();
-}
-
 async function calculateTopStudent() {
     let qG = _supabase.from('grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)').neq('subject', 'BEHAVIOUR');
     if (currentUserRole !== 'admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: grades } = await qG;
     if (!grades || grades.length === 0) return document.getElementById('stat-top-student').innerText = "N/A";
-    
     const map = {};
     grades.forEach(g => {
         if (!map[g.student_id]) map[g.student_id] = { n: g.students.name, s: 0, c: 0 };
@@ -239,63 +312,12 @@ async function calculateTopStudent() {
     document.getElementById('stat-top-student').innerText = top;
 }
 
-// --- NEW: ATTENDANCE TREND (SPARKLINE) ---
-async function updateAttendanceTrend() {
-    const last7Days = [...Array(7)].map((_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        return d.toISOString().split('T')[0];
-    }).reverse();
-
-    let qA = _supabase.from('attendance').select('date, status, students!inner(teacher_id)');
-    if (currentUserRole !== 'admin') qA = qA.eq('students.teacher_id', currentUserID);
-    const { data: attHistory } = await qA.in('date', last7Days);
-
-    let qS = _supabase.from('students').select('*', { count: 'exact', head: true });
-    if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
-    const { count: totalStds } = await qS;
-
-    let dailyPercents = last7Days.map(date => {
-        const dayAtt = (attHistory || []).filter(a => a.date === date && a.status === 'present').length;
-        return totalStds > 0 ? Math.round((dayAtt / totalStds) * 100) : 0;
-    });
-
-    // Fallback: If no history, show flat 0 line to indicate chart is ready
-    if (!attHistory || attHistory.length === 0) dailyPercents = [0, 0, 0, 0, 0, 0, 0];
-
-    const ctx = document.getElementById('attendanceSparkline').getContext('2d');
-    if (attendanceChart) attendanceChart.destroy();
-    attendanceChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: last7Days,
-            datasets: [{
-                data: dailyPercents,
-                borderColor: '#10b981',
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: true,
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                tension: 0.4
-            }]
-        },
-        options: {
-            plugins: { legend: { display: false }, tooltip: { enabled: false } },
-            scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-}
-
-// --- ATTENDANCE ---
 async function loadAttendanceList() {
     const date = document.getElementById('attendance-date').value;
     let qS = _supabase.from('students').select('*'); 
     if (currentUserRole !== 'admin') qS = qS.eq('teacher_id', currentUserID);
     const { data: stds } = await qS.order('name');
     const { data: att } = await _supabase.from('attendance').select('*').eq('date', date);
-    
     document.getElementById('attendance-list').innerHTML = (stds || []).map(s => {
         const r = att?.find(a => a.student_id === s.id);
         return `
@@ -313,27 +335,19 @@ async function loadAttendanceList() {
 async function markAt(sid, stat) {
     const date = document.getElementById('attendance-date').value;
     await _supabase.from('attendance').upsert({ 
-        student_id: sid, 
-        date, 
-        status: stat, 
-        teacher_id: currentUserID, 
-        teacher_name: currentUserName, 
-        marked_at: new Date() 
+        student_id: sid, date, status: stat, teacher_id: currentUserID, teacher_name: currentUserName, marked_at: new Date() 
     }, { onConflict: 'student_id, date' });
     loadAttendanceList(); refreshDashboard();
 }
 
-// --- GRADES ---
 async function loadGrades() {
     let qS = _supabase.from('students').select('id, name'); 
     if(currentUserRole!=='admin') qS = qS.eq('teacher_id', currentUserID);
     const { data: stds } = await qS; 
     document.getElementById('grade-student-select').innerHTML = stds.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    
     let qG = _supabase.from('grades').select('*, students!inner(name, teacher_id)').neq('subject', 'BEHAVIOUR');
     if(currentUserRole!=='admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: gs } = await qG;
-    
     document.getElementById('grade-table-body').innerHTML = (gs || []).map(g => {
         const total = g.class_score + g.exam_score;
         return `
@@ -358,28 +372,16 @@ document.getElementById('form-add-grade').addEventListener('submit', async (e) =
     const cScore = Number(document.getElementById('class-score').value);
     const eScore = Number(document.getElementById('exam-score').value);
     const total = cScore + eScore;
-
-    // AUTO-REMARK ALERT: Trigger if score is failing
     if (total < 50) {
         await _supabase.from('grades').insert([{ 
-            student_id: sid, 
-            subject: "BEHAVIOUR", 
-            remark: `SYSTEM AUTO-ALERT: Performance drop in ${subj} (${total}%).`,
+            student_id: sid, subject: "BEHAVIOUR", remark: `SYSTEM AUTO-ALERT: Performance drop in ${subj} (${total}%).`,
             class_score: 0, exam_score: 0 
         }]);
     }
-
-    await _supabase.from('grades').insert([{ 
-        student_id: sid, 
-        subject: subj, 
-        class_score: cScore, 
-        exam_score: eScore 
-    }]);
-    
+    await _supabase.from('grades').insert([{ student_id: sid, subject: subj, class_score: cScore, exam_score: eScore }]);
     toggleModal('modal-add-grade'); loadGrades(); refreshDashboard();
 });
 
-// --- ADMIN HUB ---
 async function loadStaffList() {
     const { data } = await _supabase.from('profiles').select('*').eq('role', 'teacher');
     document.getElementById('staff-list').innerHTML = (data || []).map(t => `
@@ -399,46 +401,31 @@ async function loadAdminControls() {
     document.getElementById('std-teacher-assign').innerHTML = data.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('');
 }
 
-// --- VISUAL ANALYTICS ---
 async function updateZigzag() {
     let q = _supabase.from('grades').select('subject, class_score, exam_score, students!inner(teacher_id)').neq('subject', 'BEHAVIOUR');
     if (currentUserRole !== 'admin') q = q.eq('students.teacher_id', currentUserID);
     const { data } = await q; 
     if (!data || data.length === 0) return;
-    
     const subs = {}; 
     data.forEach(g => { 
         const s = g.subject.toUpperCase(); 
         if(!subs[s]) subs[s] = {t:0,c:0}; 
-        subs[s].t+=(g.class_score+g.exam_score); 
-        subs[s].c++; 
+        subs[s].t+=(g.class_score+g.exam_score); subs[s].c++; 
     });
-    
     const lbls = Object.keys(subs); 
     const avgs = lbls.map(l => Math.round(subs[l].t / subs[l].c));
     const ctx = document.getElementById('progressChart').getContext('2d');
-    
     if (myChart) myChart.destroy();
     myChart = new Chart(ctx, { 
         type: 'line', 
         data: { 
             labels: lbls, 
             datasets: [{ 
-                label: 'Subject Performance %', 
-                data: avgs, 
-                stepped: true, 
-                borderColor: '#6366f1', 
-                borderWidth: 4, 
-                fill: true, 
-                backgroundColor: 'rgba(99, 102, 241, 0.05)',
-                tension: 0.4
+                label: 'Subject Performance %', data: avgs, stepped: true, borderColor: '#6366f1', borderWidth: 4, 
+                fill: true, backgroundColor: 'rgba(99, 102, 241, 0.05)', tension: 0.4
             }] 
         }, 
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false,
-            scales: { y: { min: 0, max: 100 } }
-        } 
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } } 
     });
 }
 
@@ -446,14 +433,11 @@ async function updateRisk() {
     let q = _supabase.from('grades').select('student_id, class_score, exam_score, students!inner(name, teacher_id)').neq('subject', 'BEHAVIOUR');
     if (currentUserRole !== 'admin') q = q.eq('students.teacher_id', currentUserID);
     const { data } = await q; 
-    
     const map = {}; 
     (data || []).forEach(g => { 
         if(!map[g.student_id]) map[g.student_id] = {n:g.students.name, s:0, c:0}; 
-        map[g.student_id].s+=(g.class_score+g.exam_score); 
-        map[g.student_id].c++; 
+        map[g.student_id].s+=(g.class_score+g.exam_score); map[g.student_id].c++; 
     });
-    
     const risks = Object.values(map).filter(x => (x.s/x.c) < 45);
     document.getElementById('at-risk-list').innerHTML = risks.length ? 
         risks.map(r => `<div class="p-3 bg-rose-50 text-rose-600 text-[10px] font-black rounded-xl uppercase border border-rose-100 animate-pulse">${r.n} (${Math.round(r.s/r.c)}%)</div>`).join('') : 
@@ -467,13 +451,9 @@ document.getElementById('form-add-teacher').addEventListener('submit', async (e)
     const name = document.getElementById('t-name').value;
     const email = document.getElementById('t-email').value;
     const password = document.getElementById('t-pass').value;
-    
     const { data, error } = await _supabase.auth.signUp({ 
-        email, 
-        password, 
-        options: { data: { full_name: name, role: 'teacher' } } 
+        email, password, options: { data: { full_name: name, role: 'teacher' } } 
     });
-    
     if (error) alert("Error: " + error.message);
     else {
         await _supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, role: 'teacher' }]);
