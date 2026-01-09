@@ -4,50 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>LEGATECH IO | Unified Master</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        
-        :root { --brand-indigo: #6366f1; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; color: #1e293b; overflow: hidden; }
-
-        /* UI Enhancements */
-        .nav-link.active { background: var(--brand-indigo); color: white; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3); }
-        .glass-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
-        
-        /* Status Badges */
-        .status-pill { padding: 4px 12px; border-radius: 99px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; overflow: hidden; margin: 0; }
+        .nav-link.active { background: #6366f1; color: white; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4); }
         .status-pending { background: #fef3c7; color: #92400e; }
         .status-approved { background: #dcfce7; color: #166534; }
         .status-denied { background: #fee2e2; color: #991b1b; }
-
-        /* Performance Colors */
-        .score-high { color: #10b981; } .score-mid { color: #f59e0b; } .score-low { color: #ef4444; }
-
-        /* Animations */
-        @keyframes pulse-lite {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
+        .score-high { color: #10b981; } 
+        .score-mid { color: #f59e0b; } 
+        .score-low { color: #ef4444; }
+        .pulse-green { background: #10b981; box-shadow: 0 0 0 0 rgba(16, 185, 129, 1); animation: pulse-green 2s infinite; }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
-        .pulse-indicator { animation: pulse-lite 2s infinite ease-in-out; }
-
         @media print {
-            aside, button, .no-print, header { display: none !important; }
-            main { width: 100% !important; overflow: visible !important; }
-            .content-sec { display: block !important; }
+            aside, button, #filter-container, .no-print, header { display: none !important; }
+            main { width: 100% !important; height: auto !important; overflow: visible !important; }
+            .content-sec { display: block !important; padding: 0 !important; }
+            .bg-slate-50\/50 { background: white !important; }
+            .rounded-\[2rem\] { border-radius: 0 !important; border: 1px solid #eee !important; }
         }
-
         @media (max-width: 768px) {
             #view-app { flex-direction: column; }
-            aside { width: 100% !important; order: 2; height: auto; padding: 12px; border-top: 1px solid #1e293b; }
-            nav { display: flex !important; overflow-x: auto; gap: 8px; }
-            .nav-link { min-width: 100px; flex-direction: column; font-size: 8px !important; }
+            aside { width: 100% !important; height: auto !important; padding: 10px !important; order: 2; border-top: 1px solid #334155; }
+            nav { display: grid !important; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+            .nav-link { flex-direction: column; padding: 8px 2px !important; font-size: 7px !important; }
             main { order: 1; height: calc(100vh - 80px); }
         }
     </style>
@@ -55,183 +43,141 @@
 <body>
 
     <div id="view-login" class="fixed inset-0 z-[500] flex items-center justify-center bg-[#0f172a] p-4">
-        <div class="bg-white/5 backdrop-blur-xl p-10 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl">
-            <div class="text-center mb-10">
-                <h1 class="text-3xl font-black italic text-white uppercase tracking-tighter">LEGATECH<span class="text-indigo-400">.IO</span></h1>
-                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Unified Command Center</p>
-            </div>
+        <div class="bg-white/10 backdrop-blur-md p-10 rounded-[2.5rem] w-full max-w-md border border-white/10">
+            <h1 class="text-2xl font-black italic text-white mb-8 text-center uppercase tracking-tighter">LEGATECH<span class="text-indigo-400">.IO</span></h1>
             <form id="login-form" class="space-y-4">
-                <div class="relative">
-                    <i class="fas fa-university absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
-                    <input type="text" id="access-code" placeholder="Institutional Code" class="w-full pl-12 p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-indigo-500 transition-all" required>
-                </div>
-                <div class="relative">
-                    <i class="fas fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
-                    <input type="email" id="login-email" placeholder="Email Address" class="w-full pl-12 p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-indigo-500 transition-all" required>
-                </div>
-                <div class="relative">
-                    <i class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
-                    <input type="password" id="login-pass" placeholder="Password" class="w-full pl-12 p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-indigo-500 transition-all" required>
-                </div>
-                <button type="submit" class="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98]">Enter System</button>
+                <input type="text" id="access-code" placeholder="Institutional Code" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none" required>
+                <input type="email" id="login-email" placeholder="Email" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none" required>
+                <input type="password" id="login-pass" placeholder="Password" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none" required>
+                <button type="submit" class="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20">Enter System</button>
             </form>
         </div>
     </div>
 
     <div id="view-app" class="hidden flex h-screen overflow-hidden">
-        
-        <aside class="w-72 bg-[#0f172a] text-slate-400 flex flex-col p-6 shrink-0 z-50">
+        <aside class="w-72 bg-[#0f172a] text-slate-400 flex flex-col p-6 shrink-0">
             <div class="text-xl font-black italic text-white mb-10 tracking-tighter px-4">LEGATECH<span class="text-indigo-400">.IO</span></div>
-            
-            <nav class="flex-1 space-y-2 overflow-y-auto custom-scrollbar">
-                <button onclick="showSection('dashboard')" id="btn-dashboard" class="nav-link active w-full flex items-center p-4 text-xs font-bold rounded-2xl transition"><i class="fas fa-th-large w-8"></i> <span>Insights</span></button>
+            <nav class="flex-1 space-y-2">
+                <button onclick="showSection('dashboard')" id="btn-dashboard" class="nav-link active w-full flex items-center p-4 text-xs font-bold rounded-2xl transition"><i class="fas fa-home w-8"></i> <span>Insights</span></button>
                 <button onclick="showSection('students')" id="btn-students" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition"><i class="fas fa-user-graduate w-8"></i> <span>Registry</span></button>
                 <button onclick="showSection('attendance')" id="btn-attendance" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition"><i class="fas fa-calendar-check w-8"></i> <span>Attendance</span></button>
                 <button onclick="showSection('grades')" id="btn-grades" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition"><i class="fas fa-chart-line w-8"></i> <span>Grades</span></button>
                 <button onclick="showSection('permissions')" id="btn-permissions" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition text-orange-400"><i class="fas fa-paper-plane w-8"></i> <span>Requests</span></button>
                 <button onclick="showSection('remarks')" id="btn-remarks" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition text-emerald-400"><i class="fas fa-comment-dots w-8"></i> <span>Remarks</span></button>
-                
                 <div id="admin-only-nav" class="hidden pt-4 mt-4 border-t border-white/10">
-                    <p class="px-4 text-[9px] font-black uppercase text-slate-500 mb-2">Management</p>
                     <button onclick="showSection('admin')" id="btn-admin" class="nav-link w-full flex items-center p-4 text-xs font-bold rounded-2xl transition text-amber-400"><i class="fas fa-users-cog w-8"></i> <span>Staff Hub</span></button>
                 </div>
             </nav>
-
-            <button onclick="location.reload()" class="mt-6 p-4 bg-rose-500/10 text-rose-500 rounded-2xl font-black uppercase text-[10px] hover:bg-rose-500 hover:text-white transition-all active:scale-95">
-                <i class="fas fa-power-off mr-2"></i> Terminate Session
-            </button>
+            <button onclick="location.reload()" class="p-4 bg-rose-500/10 text-rose-500 rounded-2xl font-black uppercase text-[10px] hover:bg-rose-500 hover:text-white transition">Logout</button>
         </aside>
 
-        <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
-            
-            <header class="h-24 flex items-center justify-between px-10 bg-white border-b shrink-0 z-40">
-                <div class="flex items-center gap-10">
-                    <div>
-                        <h2 id="section-title" class="text-xl font-black text-slate-800 uppercase tracking-tight">Insights</h2>
-                        <div class="flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 rounded-full pulse-green"></span>
-                            <p id="role-badge" class="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Live Access</p>
-                        </div>
-                    </div>
-
-                    <div class="relative group no-print">
-                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
-                        <input type="text" id="global-search" onkeyup="handleGlobalSearch(this.value)" 
-                            placeholder="Search records..." 
-                            class="pl-12 pr-6 py-3 bg-slate-100 border-transparent border rounded-2xl text-xs font-bold w-64 focus:w-96 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
-                    </div>
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <header class="h-24 flex items-center justify-between px-10 bg-white border-b shrink-0">
+                <div>
+                    <h2 id="section-title" class="text-xl font-black text-slate-800 uppercase">Insights</h2>
+                    <p id="role-badge" class="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Live Access</p>
                 </div>
-
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-4">
                     <button onclick="window.print()" class="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition no-print"><i class="fas fa-print"></i></button>
                     <div id="filter-container"></div>
                 </div>
             </header>
 
-            <div class="flex-1 overflow-y-auto p-10">
+            <div class="flex-1 overflow-y-auto p-10 bg-slate-50/50">
                 
                 <section id="sec-dashboard" class="content-sec space-y-8">
                     <div id="smart-agenda-hud" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col justify-between">
-                            <h3 id="stat-students" class="text-5xl font-black tracking-tighter">0</h3>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Active Students</p>
+                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm group hover:border-indigo-200 transition">
+                            <h3 id="stat-students" class="text-4xl font-black">0</h3>
+                            <p class="text-[10px] font-black text-slate-400 uppercase">Total Students</p>
                         </div>
-                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm">
+                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm group hover:border-indigo-200 transition">
                             <div class="flex justify-between items-start h-full">
                                 <div>
-                                    <h3 id="stat-attendance" class="text-5xl font-black tracking-tighter">0%</h3>
-                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Average Attendance</p>
+                                    <h3 id="stat-attendance" class="text-4xl font-black">0%</h3>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase">Daily Presence</p>
                                 </div>
-                                <div class="w-24 h-16"><canvas id="attendanceSparkline"></canvas></div>
+                                <div class="w-24 h-full min-h-[50px]">
+                                    <canvas id="attendanceSparkline"></canvas>
+                                </div>
                             </div>
                         </div>
-                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm">
-                            <h3 id="stat-top-student" class="text-xl font-black truncate text-indigo-600">N/A</h3>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Elite Performer</p>
+                        <div class="bg-white p-8 rounded-[2rem] border shadow-sm group hover:border-indigo-200 transition">
+                            <h3 id="stat-top-student" class="text-xl font-black truncate">N/A</h3>
+                            <p class="text-[10px] font-black text-slate-400 uppercase">Top Performer</p>
                         </div>
                     </div>
                     
                     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                         <div class="lg:col-span-3 bg-white p-8 rounded-[2.5rem] border shadow-sm">
-                            <h4 class="text-[10px] font-black text-slate-400 uppercase mb-8 italic tracking-widest">Academic Progression Curve</h4>
-                            <div class="h-[400px]"><canvas id="progressChart"></canvas></div>
+                            <div class="flex justify-between items-center mb-6">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase italic">Performance Curve</h4>
+                            </div>
+                            <div class="h-[350px]"><canvas id="progressChart"></canvas></div>
                         </div>
                         <div class="bg-white p-8 rounded-[2.5rem] border border-rose-100 shadow-sm">
-                            <h4 class="text-[10px] font-black text-rose-500 uppercase mb-6 italic tracking-widest">At-Risk Monitoring</h4>
-                            <div id="at-risk-list" class="space-y-4"></div>
+                            <h4 class="text-[10px] font-black text-rose-500 uppercase mb-6 italic">Risk Analysis</h4>
+                            <div id="at-risk-list" class="space-y-3"></div>
                         </div>
                     </div>
                 </section>
 
                 <section id="sec-students" class="content-sec hidden space-y-6">
-                    <div class="flex justify-between items-end">
-                        <div>
-                            <h3 class="font-black text-2xl uppercase tracking-tight">Registry</h3>
-                            <p class="text-xs text-slate-400 font-bold">Manage student profiles and assignments</p>
-                        </div>
-                        <button onclick="openEnrollModal()" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200 hover:translate-y-[-2px] transition-all">Enroll New Student</button>
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-black uppercase tracking-tight text-slate-700">Student Database</h3>
+                        <button onclick="openEnrollModal()" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200">Enroll Student</button>
                     </div>
-                    <div id="student-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                    <div id="student-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
                 </section>
 
                 <section id="sec-attendance" class="content-sec hidden space-y-6">
-                    <div class="flex justify-between items-center bg-white p-6 rounded-[2rem] border">
-                        <h3 class="font-black uppercase text-slate-700">Daily Attendance Log</h3>
-                        <input type="date" id="attendance-date" class="p-3 bg-slate-50 border-none rounded-xl text-xs font-black outline-none ring-2 ring-transparent focus:ring-indigo-500/20" onchange="loadAttendanceList()">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-black uppercase text-slate-700">Daily Attendance</h3>
+                        <input type="date" id="attendance-date" class="p-3 border rounded-xl text-xs font-bold outline-none focus:border-indigo-500" onchange="loadAttendanceList()">
                     </div>
-                    <div class="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                        <table class="w-full text-left">
-                            <thead class="bg-slate-50 border-b">
-                                <tr>
-                                    <th class="p-6 text-[10px] font-black uppercase text-slate-400">Student Name</th>
-                                    <th class="p-6 text-[10px] font-black uppercase text-slate-400 text-right">Status Control</th>
-                                </tr>
-                            </thead>
-                            <tbody id="attendance-list" class="divide-y"></tbody>
-                        </table>
+                    <div class="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
+                        <table class="w-full text-left"><tbody id="attendance-list" class="divide-y"></tbody></table>
                     </div>
                 </section>
 
                 <section id="sec-grades" class="content-sec hidden space-y-6">
                     <div class="flex justify-between items-center">
-                        <h3 class="font-black uppercase text-slate-700 tracking-widest text-sm">Academic Ledger</h3>
-                        <button onclick="toggleModal('modal-add-grade')" class="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">Post Score</button>
+                        <h3 class="font-black uppercase text-slate-700">Academic Records</h3>
+                        <button onclick="toggleModal('modal-add-grade')" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200">Post New Score</button>
                     </div>
-                    <div id="grade-table-body" class="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden divide-y"></div>
+                    <div id="grade-table-body" class="bg-white rounded-[2rem] border divide-y shadow-sm overflow-hidden"></div>
                 </section>
 
                 <section id="sec-permissions" class="content-sec hidden space-y-6">
                     <div class="flex justify-between items-center">
-                        <h3 class="font-black uppercase text-orange-500 tracking-widest text-sm">Communication Hub</h3>
-                        <button onclick="toggleModal('modal-add-request')" class="bg-orange-500 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl">New Request</button>
+                        <h3 class="font-black uppercase text-orange-500">Communication Hub</h3>
+                        <button onclick="toggleModal('modal-add-request')" class="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-orange-200">New Request</button>
                     </div>
-                    <div class="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                        <table class="w-full text-left">
-                            <tbody id="requests-list" class="divide-y"></tbody>
-                        </table>
+                    <div class="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
+                        <table class="w-full text-left text-sm"><tbody id="requests-list" class="divide-y"></tbody></table>
                     </div>
                 </section>
 
                 <section id="sec-remarks" class="content-sec hidden space-y-6">
-                    <h3 class="font-black uppercase text-emerald-600 tracking-widest text-sm italic">Behavioral Log</h3>
-                    <div id="remarks-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                    <h3 class="font-black uppercase text-emerald-600">Behavioral Log</h3>
+                    <div id="remarks-list" class="bg-white rounded-[2rem] border divide-y shadow-sm overflow-hidden"></div>
                 </section>
 
                 <section id="sec-admin" class="content-sec hidden space-y-6">
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div class="bg-[#0f172a] p-8 rounded-[2.5rem] text-white shadow-2xl">
-                            <h3 class="font-black uppercase mb-6 text-amber-400 tracking-widest text-xs">Authorize Staff</h3>
+                        <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm">
+                            <h3 class="font-black uppercase mb-6 text-amber-500">Grant Staff Access</h3>
                             <form id="form-add-teacher" class="space-y-4">
-                                <input type="text" id="t-name" placeholder="Full Name" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-sm outline-none focus:border-amber-400" required>
-                                <input type="email" id="t-email" placeholder="Institutional Email" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-sm outline-none focus:border-amber-400" required>
-                                <input type="password" id="t-pass" placeholder="Initial Password" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-sm outline-none focus:border-amber-400" required>
-                                <button type="submit" class="w-full py-4 bg-amber-500 text-slate-900 font-black rounded-2xl uppercase text-[10px]">Create Account</button>
+                                <input type="text" id="t-name" placeholder="Full Name" class="w-full p-4 bg-slate-50 border rounded-2xl text-sm focus:outline-indigo-500" required>
+                                <input type="email" id="t-email" placeholder="Institutional Email" class="w-full p-4 bg-slate-50 border rounded-2xl text-sm focus:outline-indigo-500" required>
+                                <input type="password" id="t-pass" placeholder="Secure Password" class="w-full p-4 bg-slate-50 border rounded-2xl text-sm focus:outline-indigo-500" required>
+                                <button type="submit" class="w-full py-4 bg-amber-500 text-white font-black rounded-2xl uppercase text-[10px] shadow-lg shadow-amber-100">Register Teacher</button>
                             </form>
                         </div>
                         <div class="lg:col-span-2 bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-                            <h3 class="p-8 font-black uppercase border-b bg-slate-50 text-xs tracking-widest">Active Staff Directory</h3>
+                            <h3 class="p-8 font-black uppercase border-b bg-slate-50/50">Staff Directory</h3>
                             <div id="staff-list" class="divide-y"></div>
                         </div>
                     </div>
@@ -240,55 +186,80 @@
         </main>
     </div>
 
-    <div id="modal-student" class="hidden fixed inset-0 bg-slate-900/80 flex items-center justify-center z-[600] p-4 backdrop-blur-md">
-        <div class="bg-white p-10 rounded-[3rem] w-full max-w-md shadow-2xl">
-            <h2 id="student-modal-title" class="text-2xl font-black mb-6 uppercase text-slate-800 italic">Enrollment</h2>
-            <form id="form-student" class="space-y-5">
+    <div id="modal-student" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[600] p-4 backdrop-blur-sm">
+        <div class="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+            <h2 id="student-modal-title" class="text-xl font-black mb-6 uppercase italic text-slate-800">Student Enrollment</h2>
+            <form id="form-student" class="space-y-4 text-left">
                 <input type="hidden" id="edit-std-id">
                 <div class="space-y-1">
-                    <label class="text-[10px] font-black text-slate-400 ml-2 uppercase">Legal Name</label>
-                    <input type="text" id="std-name" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none" required>
+                    <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Legal Name</label>
+                    <input type="text" id="std-name" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:border-indigo-500 outline-none" required>
                 </div>
                 <div class="space-y-1">
-                    <label class="text-[10px] font-black text-slate-400 ml-2 uppercase">Class / Group</label>
-                    <input type="text" id="std-grade" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none" required>
+                    <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Class / Grade Level</label>
+                    <input type="text" id="std-grade" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:border-indigo-500 outline-none" required>
                 </div>
                 <div id="admin-assign-field" class="hidden space-y-1">
-                    <label class="text-[10px] font-black text-amber-500 ml-2 uppercase italic">Admin: Assign Instructor</label>
-                    <select id="std-teacher-assign" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold outline-none"></select>
+                    <label class="text-[9px] font-black text-slate-400 ml-2 uppercase italic">Assigned Instructor</label>
+                    <select id="std-teacher-assign" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-indigo-500"></select>
                 </div>
-                <div class="flex flex-col gap-2 pt-4">
-                    <button type="submit" id="student-btn-text" class="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs shadow-lg">Save Record</button>
-                    <button type="button" onclick="toggleModal('modal-student')" class="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Dismiss</button>
-                </div>
+                <button type="submit" id="student-btn-text" class="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs mt-4">Save Entry</button>
+                <button type="button" onclick="toggleModal('modal-student')" class="w-full text-[10px] font-black text-slate-400 mt-2 uppercase tracking-widest">Close Window</button>
             </form>
         </div>
     </div>
 
-    <div id="modal-add-grade" class="hidden fixed inset-0 bg-slate-900/80 flex items-center justify-center z-[600] p-4 backdrop-blur-md">
-        <div class="bg-white p-10 rounded-[3rem] w-full max-w-md shadow-2xl">
-            <h2 class="text-2xl font-black mb-8 uppercase text-slate-800 italic text-center">Score Update</h2>
-            <form id="form-add-grade" class="space-y-4">
-                <select id="grade-student-select" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold outline-none ring-2 ring-transparent focus:ring-indigo-500"></select>
-                <input type="text" id="grade-subject" placeholder="Subject Name" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold outline-none ring-2 ring-transparent focus:ring-indigo-500" required>
+    <div id="modal-add-request" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[600] p-4 backdrop-blur-sm">
+        <div class="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+            <h2 class="text-xl font-black mb-6 uppercase text-orange-500 italic">Submit Request</h2>
+            <form id="form-add-request" class="space-y-4 text-left">
+                <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Category</label>
+                <select id="req-subject" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-orange-500">
+                    <option>Leave Request</option>
+                    <option>Supplies / Materials</option>
+                    <option>Technical Assistance</option>
+                    <option>Administrative Inquiry</option>
+                </select>
+                <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Details</label>
+                <textarea id="req-message" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold h-32 outline-none focus:border-orange-500" placeholder="Please describe your request..." required></textarea>
+                <button type="submit" class="w-full py-4 bg-orange-500 text-white font-black rounded-2xl uppercase text-xs mt-4">Broadcast Request</button>
+                <button type="button" onclick="toggleModal('modal-add-request')" class="w-full text-[10px] font-black text-slate-400 mt-2 uppercase">Discard</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-add-grade" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[600] p-4 backdrop-blur-sm">
+        <div class="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl text-center">
+            <h2 class="text-xl font-black mb-6 uppercase text-slate-800 italic">Academic Log Entry</h2>
+            <form id="form-add-grade" class="space-y-4 text-left">
+                <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Select Student</label>
+                <select id="grade-student-select" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-indigo-500"></select>
+                <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Subject Area</label>
+                <input type="text" id="grade-subject" placeholder="e.g. Mathematics" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-indigo-500" required>
                 <div class="grid grid-cols-2 gap-4">
-                    <input type="number" id="class-score" placeholder="Class /50" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-center outline-none" required max="50">
-                    <input type="number" id="exam-score" placeholder="Exam /50" class="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-center outline-none" required max="50">
+                    <div class="space-y-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2 uppercase text-center block">Continuous /50</label>
+                        <input type="number" id="class-score" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-center outline-none focus:border-indigo-500" required max="50">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2 uppercase text-center block">Examination /50</label>
+                        <input type="number" id="exam-score" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-center outline-none focus:border-indigo-500" required max="50">
+                    </div>
                 </div>
-                <button type="submit" class="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs mt-4 shadow-xl">Commit Score</button>
-                <button type="button" onclick="toggleModal('modal-add-grade')" class="w-full text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2">Cancel Entry</button>
+                <button type="submit" class="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-xs mt-4 shadow-lg shadow-indigo-100">Commit to Record</button>
+                <button type="button" onclick="toggleModal('modal-add-grade')" class="w-full text-[10px] font-black text-slate-400 mt-2 text-center uppercase">Cancel</button>
             </form>
         </div>
     </div>
 
-    <div id="modal-quick-remark" class="hidden fixed inset-0 bg-slate-900/80 flex items-center justify-center z-[700] p-4 backdrop-blur-md">
-        <div class="bg-white p-10 rounded-[3rem] w-full max-w-md shadow-2xl border-t-8 border-emerald-500">
-            <h2 class="text-2xl font-black mb-1 uppercase text-emerald-600 italic">Behavioral Note</h2>
-            <p id="remark-target-name" class="text-[10px] font-bold text-slate-400 uppercase mb-8 tracking-widest"></p>
+    <div id="modal-quick-remark" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[700] p-4 backdrop-blur-sm">
+        <div class="bg-white p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl border-t-8 border-emerald-500">
+            <h2 class="text-xl font-black mb-2 uppercase text-emerald-600 italic">Observational Remark</h2>
+            <p id="remark-target-name" class="text-[10px] font-bold text-slate-400 uppercase mb-6 tracking-widest"></p>
             <input type="hidden" id="remark-target-id">
-            <textarea id="quick-remark-text" placeholder="Type observation here..." class="w-full p-6 bg-slate-50 border-none rounded-[2rem] font-bold h-40 mb-6 outline-none focus:ring-2 focus:ring-emerald-500" required></textarea>
-            <button onclick="saveQuickRemark()" class="w-full py-5 bg-emerald-500 text-white font-black rounded-2xl uppercase text-xs shadow-lg shadow-emerald-100">Post to Log</button>
-            <button onclick="toggleModal('modal-quick-remark')" class="w-full text-[10px] font-black text-slate-400 mt-6 uppercase tracking-widest">Close</button>
+            <textarea id="quick-remark-text" placeholder="Note down student behavior, needs, or milestones..." class="w-full p-6 bg-slate-50 border rounded-2xl font-bold h-40 mb-4 outline-none focus:border-emerald-500" required></textarea>
+            <button onclick="saveQuickRemark()" class="w-full py-4 bg-emerald-500 text-white font-black rounded-2xl uppercase text-xs shadow-lg shadow-emerald-100">Post Observation</button>
+            <button onclick="toggleModal('modal-quick-remark')" class="w-full text-[10px] font-black text-slate-400 mt-4 uppercase">Dismiss</button>
         </div>
     </div>
 
