@@ -1,5 +1,6 @@
 /** * LEGATECH 2026 - FULL APPLICATION CORE (DASHBOARD.JS)
- * No features removed. No logic simplified. Strict adherence to full functionality.
+ * VERSION: 4.0.2 (STRICT PRODUCTION + REPORTING ENGINE)
+ * NO LOGIC SIMPLIFIED. FULL FUNCTIONALITY PRESERVED.
  */
 
 // --- GLOBAL CONFIGURATION & INSTANTIATION ---
@@ -25,10 +26,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const pass = document.getElementById('login-pass').value;
+    const accessCode = document.getElementById('access-code').value;
     
     // Strict Access Code Enforcement
-    if (document.getElementById('access-code').value !== "LEGATECH2025") {
-        return alert("ACCESS DENIED");
+    if (accessCode !== "LEGATECH2025") {
+        return alert("CRITICAL: ACCESS DENIED - INVALID LEGACY CODE");
     }
 
     const { data, error } = await _supabase.auth.signInWithPassword({ email, password: pass });
@@ -106,7 +108,6 @@ async function refreshDashboard() {
         document.getElementById('stat-attendance').innerText = "0%";
     }
     
-    // Secondary Dash Elements
     calculateTopStudent(); 
     updateZigzag(); 
     updateRisk(); 
@@ -196,8 +197,7 @@ async function updateAttendanceTrend() {
 // --- STUDENT MANAGEMENT ---
 async function loadStudentHub(filterT = 'all') {
     const today = new Date().toISOString().split('T')[0];
-    let q = _supabase.from('students').select('*');
-    
+    let q = _supabase.from('students').select('*'); 
     if (currentUserRole !== 'admin') q = q.eq('teacher_id', currentUserID);
     else if (filterT !== 'all') q = q.eq('teacher_id', filterT);
     
@@ -287,7 +287,7 @@ async function saveQuickRemark() {
 async function loadRemarks() {
     const { data } = await _supabase.from('grades').select('*, students!inner(name, teacher_id)').not('remark', 'is', null);
     const filtered = currentUserRole === 'admin' ? data : (data || []).filter(d => d.students.teacher_id === currentUserID);
-    document.getElementById('remarks-list').innerHTML = filtered.map(x => `
+    document.getElementById('remarks-list').innerHTML = (filtered || []).map(x => `
         <div class="p-6 flex justify-between items-center group border-b last:border-0">
             <div>
                 <p class="text-[9px] font-black text-slate-400 italic">${x.students.name}</p>
@@ -322,7 +322,9 @@ async function loadPermissions() {
             <td class="p-6 text-[10px] text-slate-500 italic">${r.message}</td>
             <td class="p-6 text-right">
                 <span class="px-3 py-1 rounded-full text-[9px] font-black status-${r.status}">${r.status}</span>
-                ${currentUserRole === 'admin' && r.status === 'pending' ? `<button onclick="handleRequest('${r.id}','approved')" class="ml-4 text-emerald-500"><i class="fas fa-check"></i></button><button onclick="handleRequest('${r.id}','denied')" class="ml-2 text-rose-500"><i class="fas fa-times"></i></button>` : ''}
+                ${currentUserRole === 'admin' && r.status === 'pending' ? `
+                    <button onclick="handleRequest('${r.id}','approved')" class="ml-4 text-emerald-500"><i class="fas fa-check"></i></button>
+                    <button onclick="handleRequest('${r.id}','denied')" class="ml-2 text-rose-500"><i class="fas fa-times"></i></button>` : ''}
                 <button onclick="deleteItem('requests', '${r.id}', loadPermissions)" class="ml-4 text-rose-300 opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`).join('');
@@ -415,15 +417,25 @@ async function loadGrades() {
     }).join('');
 }
 
-// --- UNIFIED MATRIX LOGIC ---
+// --- UNIFIED MATRIX LOGIC + REPORTING ---
+// --- UPDATED MATRIX WITH BATCH PRINTING ---
 async function loadAccumulatedGrades() {
-    let qG = _supabase.from('grades').select('*, students!inner(name, teacher_id, grade_level)').neq('subject', 'BEHAVIOUR');
+    let qG = _supabase.from('grades').select('*, students!inner(id, name, teacher_id, grade_level)').neq('subject', 'BEHAVIOUR');
     if(currentUserRole !== 'admin') qG = qG.eq('students.teacher_id', currentUserID);
     const { data: gs } = await qG;
 
     const uniqueSubjects = [...new Set((gs || []).map(g => g.subject.toUpperCase()))].sort();
     const headRow = document.getElementById('master-table-head');
-    headRow.innerHTML = `<th class="p-6 sticky left-0 bg-slate-50 border-r z-10 sticky-col">Student Name</th>`;
+    
+    // Added "Print All" Icon to the header
+    headRow.innerHTML = `
+        <th class="p-6 sticky left-0 bg-slate-50 border-r z-10 sticky-col flex items-center justify-between">
+            <span>Student Name</span>
+            <button onclick="generateAllReports()" class="text-indigo-600 hover:text-indigo-800 title="Print All Reports">
+                <i class="fas fa-print text-sm"></i>
+            </button>
+        </th>`;
+        
     uniqueSubjects.forEach(subj => {
         headRow.innerHTML += `<th class="p-6 text-center border-r min-w-[100px]">${subj}</th>`;
     });
@@ -433,7 +445,7 @@ async function loadAccumulatedGrades() {
     (gs || []).forEach(g => {
         const sid = g.student_id;
         if (!studentMap[sid]) {
-            studentMap[sid] = { name: g.students.name, scores: {}, totalSum: 0, subjectCount: 0 };
+            studentMap[sid] = { id: sid, name: g.students.name, grade: g.students.grade_level, scores: {}, totalSum: 0, subjectCount: 0 };
         }
         const subjKey = g.subject.toUpperCase();
         const total = g.class_score + g.exam_score;
@@ -453,12 +465,160 @@ async function loadAccumulatedGrades() {
 
             return `
             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition">
-                <td class="p-4 font-black uppercase text-slate-700 sticky left-0 bg-white z-10 sticky-col border-r">${s.name}</td>
+                <td class="p-4 font-black uppercase text-slate-700 sticky left-0 bg-white z-10 sticky-col border-r">
+                   <div class="flex items-center justify-between">
+                        <span>${s.name}</span>
+                        <button onclick="generateReport('${s.id}')" class="ml-2 text-[8px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-600 hover:text-white transition">REPORT</button>
+                   </div>
+                </td>
                 ${subjectCells}
                 <td class="p-4 text-center bg-indigo-50/30"><span class="font-black ${getScoreClass(avg)}">${avg}%</span></td>
             </tr>`;
         }).join('');
     }
+}
+
+// --- BATCH REPORT ENGINE ---
+// --- OFFICIAL BATCH REPORT ENGINE (HIGH-FIDELITY) ---
+async function generateAllReports() {
+    if(!confirm("Generate official reports for all students?")) return;
+    
+    let q = _supabase.from('grades').select('*, students!inner(name, grade_level, teacher_id)');
+    if(currentUserRole !== 'admin') q = q.eq('students.teacher_id', currentUserID);
+    const { data: allData } = await q;
+
+    if (!allData || allData.length === 0) return alert("No data available.");
+
+    const groups = allData.reduce((acc, curr) => {
+        if (!acc[curr.student_id]) acc[curr.student_id] = { name: curr.students.name, grade: curr.students.grade_level, entries: [] };
+        acc[curr.student_id].entries.push(curr);
+        return acc;
+    }, {});
+
+    let fullHTML = `
+    <style>
+        @media print { .page-break { page-break-after: always; } }
+        body { font-family: 'Inter', sans-serif; color: #1e293b; }
+        .report-card { padding: 40px; border: 2px solid #f1f5f9; margin-bottom: 20px; max-width: 800px; margin: auto; }
+        .header { text-align: center; border-bottom: 4px solid #6366f1; padding-bottom: 20px; margin-bottom: 30px; }
+        .school-name { font-size: 28px; font-weight: 900; color: #4338ca; letter-spacing: -1px; }
+        .student-info { display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 15px; border-radius: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { text-align: left; background: #f1f5f9; padding: 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .score-pill { font-weight: 800; padding: 4px 8px; border-radius: 6px; }
+        .pass { color: #059669; }
+        .fail { color: #dc2626; }
+        .remarks-section { background: #fff7ed; padding: 20px; border-radius: 12px; border-left: 4px solid #f59e0b; }
+        .signature-grid { display: flex; justify-content: space-between; margin-top: 60px; }
+        .sig-line { border-top: 1px solid #cbd5e1; width: 200px; text-align: center; padding-top: 8px; font-size: 12px; font-weight: bold; }
+    </style>`;
+
+    Object.values(groups).forEach(s => {
+        const academic = s.entries.filter(g => g.subject !== 'BEHAVIOUR');
+        const logs = s.entries.filter(g => g.subject === 'BEHAVIOUR');
+        
+        fullHTML += `
+            <div class="report-card page-break">
+                <div class="header">
+                    <div class="school-name">LEGATECH ACADEMY 2026</div>
+                    <div style="font-size: 10px; font-weight: bold; color: #64748b; margin-top: 5px;">OFFICIAL STUDENT PROGRESS RECORD</div>
+                </div>
+
+                <div class="student-info">
+                    <div>
+                        <div style="font-size: 10px; color: #64748b; font-weight: bold;">STUDENT NAME</div>
+                        <div style="font-size: 18px; font-weight: 900;">${s.name.toUpperCase()}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 10px; color: #64748b; font-weight: bold;">GRADE LEVEL</div>
+                        <div style="font-size: 18px; font-weight: 900;">${s.grade}</div>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Subject</th>
+                            <th>Class Score</th>
+                            <th>Exam Score</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+        
+        academic.forEach(g => {
+            const total = g.class_score + g.exam_score;
+            const isPass = total >= 50;
+            fullHTML += `
+                <tr>
+                    <td style="font-weight: bold;">${g.subject}</td>
+                    <td>${g.class_score}</td>
+                    <td>${g.exam_score}</td>
+                    <td class="score-pill">${total}%</td>
+                    <td class="${isPass ? 'pass' : 'fail'}" style="font-weight: 900;">${isPass ? 'PASSED' : 'RE-SIT'}</td>
+                </tr>`;
+        });
+
+        fullHTML += `</tbody></table>`;
+
+        if (logs.length > 0) {
+            fullHTML += `
+                <div class="remarks-section">
+                    <div style="font-size: 10px; font-weight: bold; margin-bottom: 10px;">BEHAVIORAL REMARKS & SYSTEM ALERTS</div>
+                    <div style="font-size: 12px; line-height: 1.6;">
+                        ${logs.map(l => `• ${l.remark}`).join('<br>')}
+                    </div>
+                </div>`;
+        }
+
+        fullHTML += `
+                <div class="signature-grid">
+                    <div class="sig-line">Class Teacher</div>
+                    <div class="sig-line">Principal</div>
+                    <div class="sig-line">Date: ${new Date().toLocaleDateString()}</div>
+                </div>
+            </div>`;
+    });
+
+    const win = window.open('', '_blank');
+    win.document.write(`<html><head><title>Batch_Reports_2026</title></head><body onload="window.print()">${fullHTML}</body></html>`);
+}
+
+// --- REPORT ENGINE ---
+async function generateReport(studentId) {
+    const { data: student } = await _supabase.from('students').select('*').eq('id', studentId).single();
+    const { data: grades } = await _supabase.from('grades').select('*').eq('student_id', studentId);
+    
+    if (!grades || grades.length === 0) return alert("No data for report.");
+
+    const academic = grades.filter(g => g.subject !== 'BEHAVIOUR');
+    const logs = grades.filter(g => g.subject === 'BEHAVIOUR');
+    
+    let content = `
+    ================================================
+           LEGATECH ACADEMIC REPORT 2026
+    ================================================
+    STUDENT: ${student.name.toUpperCase()}
+    GRADE:   ${student.grade_level}
+    DATE:    ${new Date().toLocaleDateString()}
+    ------------------------------------------------
+    ACADEMIC PERFORMANCE:`;
+
+    academic.forEach(g => {
+        const total = g.class_score + g.exam_score;
+        content += `\n${g.subject.padEnd(15)} : ${total}% (${total >= 50 ? 'PASS' : 'FAIL'})`;
+    });
+
+    if (logs.length > 0) {
+        content += `\n\nBEHAVIOR & SYSTEM ALERTS:`;
+        logs.forEach(l => content += `\n- ${l.remark}`);
+    }
+
+    const win = window.open('', '_blank');
+    win.document.write(`<pre style="padding:40px; font-family:monospace; line-height:1.5">${content}</pre>`);
+    win.print();
 }
 
 document.getElementById('form-add-grade').addEventListener('submit', async (e) => {
@@ -500,9 +660,9 @@ async function loadAdminControls() {
     document.getElementById('filter-container').innerHTML = `
         <select onchange="loadStudentHub(this.value)" class="p-3 border rounded-xl font-black text-[10px] uppercase bg-white">
             <option value="all">Global View</option>
-            ${data.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
+            ${(data || []).map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
         </select>`;
-    document.getElementById('std-teacher-assign').innerHTML = data.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('');
+    document.getElementById('std-teacher-assign').innerHTML = (data || []).map(t => `<option value="${t.id}">${t.full_name}</option>`).join('');
 }
 
 // --- ADVANCED CHARTING (ZIGZAG & RISK) ---
@@ -567,7 +727,7 @@ document.getElementById('form-add-teacher').addEventListener('submit', async (e)
     });
     
     if (error) {
-        alert("Error: " + error.message);
+        alert("Provision Error: " + error.message);
     } else {
         await _supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, role: 'teacher' }]);
         alert("Teacher Access Granted Successfully!");
