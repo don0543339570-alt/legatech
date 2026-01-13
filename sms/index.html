@@ -23,7 +23,6 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         .sticky-col { position: sticky; left: 0; background: white; z-index: 20; border-right: 2px solid #f1f5f9; }
 
-        /* BEST STUDENT CARD PREMIUM STYLES */
         .top-student-card {
             background: linear-gradient(135deg, #ffffff 0%, #fefce8 100%) !important;
             border: 2px solid #fbbf24 !important;
@@ -54,13 +53,21 @@
             70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
+
+        /* --- EXCLUSIVE PRINT ENGINE STYLES --- */
         @media print {
-            aside, button, #filter-container, .no-print, header { display: none !important; }
-            main { width: 100% !important; height: auto !important; overflow: visible !important; }
+            aside, #filter-container, .no-print, header, button, .modal-overlay { display: none !important; }
+            body { background: white !important; overflow: visible !important; }
+            main { width: 100% !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
             .content-sec { display: block !important; padding: 0 !important; }
             .bg-slate-50\/50 { background: white !important; }
-            .rounded-\[2rem\] { border-radius: 0 !important; border: 1px solid #eee !important; }
+            .rounded-\[2rem\], .rounded-\[2.5rem\] { border-radius: 0 !important; border: 1px solid #eee !important; box-shadow: none !important; }
+            table { width: 100% !important; border-collapse: collapse !important; }
+            th, td { border: 1px solid #eee !important; padding: 8px !important; color: black !important; }
+            .sticky-col { position: static !important; background: white !important; }
+            canvas { max-width: 100% !important; height: auto !important; }
         }
+
         @media (max-width: 768px) {
             #view-app { flex-direction: column; }
             aside { width: 100% !important; height: auto !important; padding: 10px !important; order: 2; border-top: 1px solid #334155; }
@@ -102,13 +109,29 @@
         </aside>
 
         <main class="flex-1 flex flex-col overflow-hidden">
-            <header class="h-24 flex items-center justify-between px-10 bg-white border-b shrink-0">
+            <div class="hidden print:block p-8 border-b-4 border-indigo-600 mb-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-black text-slate-800 tracking-tighter italic">LEGATECH INTERNATIONAL</h1>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Unified Academic Management System</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-black text-slate-800">OFFICIAL RECORD</p>
+                        <p id="print-date" class="text-[9px] text-slate-500"></p>
+                    </div>
+                </div>
+            </div>
+
+            <header class="h-24 flex items-center justify-between px-10 bg-white border-b shrink-0 no-print">
                 <div>
                     <h2 id="section-title" class="text-xl font-black text-slate-800 uppercase">Insights</h2>
                     <p id="role-badge" class="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Live Access</p>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button onclick="window.print()" class="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition no-print"><i class="fas fa-print"></i></button>
+                    <button onclick="window.print()" class="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition no-print">
+                        <i class="fas fa-print"></i>
+                        <span class="text-[10px] font-black uppercase tracking-wider">Generate Report</span>
+                    </button>
                     <div id="filter-container"></div>
                 </div>
             </header>
@@ -177,7 +200,7 @@
                 <section id="sec-students" class="content-sec hidden space-y-6">
                     <div class="flex justify-between items-center">
                         <h3 class="font-black uppercase tracking-tight text-slate-700">Student Database</h3>
-                        <button onclick="openEnrollModal()" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200">Enroll Student</button>
+                        <button onclick="openEnrollModal()" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200 no-print">Enroll Student</button>
                     </div>
                     <div id="student-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
                 </section>
@@ -185,7 +208,7 @@
                 <section id="sec-attendance" class="content-sec hidden space-y-6">
                     <div class="flex justify-between items-center">
                         <h3 class="font-black uppercase text-slate-700">Daily Attendance</h3>
-                        <input type="date" id="attendance-date" class="p-3 border rounded-xl text-xs font-bold outline-none focus:border-indigo-500" onchange="loadAttendanceList()">
+                        <input type="date" id="attendance-date" class="p-3 border rounded-xl text-xs font-bold outline-none focus:border-indigo-500 no-print" onchange="loadAttendanceList()">
                     </div>
                     <div class="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
                         <table class="w-full text-left">
@@ -200,7 +223,7 @@
                             <h3 class="font-black uppercase text-slate-700">Academic Records</h3>
                             <p class="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Master Unified Grid</p>
                         </div>
-                        <button onclick="toggleModal('modal-add-grade')" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200">Post New Score</button>
+                        <button onclick="toggleModal('modal-add-grade')" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-indigo-200 no-print">Post New Score</button>
                     </div>
                     <div class="space-y-4">
                         <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 italic">Accumulative Performance Table</h4>
@@ -216,16 +239,22 @@
                             </table>
                         </div>
                     </div>
-                    <div class="space-y-4">
-                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 italic">Recent Entries Feed</h4>
-                        <div id="grade-table-body" class="bg-white rounded-[2rem] border divide-y shadow-sm overflow-hidden"></div>
+                    <div class="hidden print:flex justify-between mt-20 px-10">
+                        <div class="text-center">
+                            <div class="w-48 border-b border-slate-400 mb-2"></div>
+                            <p class="text-[9px] font-black text-slate-500 uppercase">Class Teacher Signature</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="w-48 border-b border-slate-400 mb-2"></div>
+                            <p class="text-[9px] font-black text-slate-500 uppercase">Headmistress Signature</p>
+                        </div>
                     </div>
                 </section>
 
                 <section id="sec-permissions" class="content-sec hidden space-y-6">
                     <div class="flex justify-between items-center">
                         <h3 class="font-black uppercase text-orange-500">Communication Hub</h3>
-                        <button onclick="toggleModal('modal-add-request')" class="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-orange-200">New Request</button>
+                        <button onclick="toggleModal('modal-add-request')" class="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-orange-200 no-print">New Request</button>
                     </div>
                     <div class="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
                         <table class="w-full text-left text-sm">
@@ -233,13 +262,15 @@
                         </table>
                     </div>
                 </section>
+
                 <section id="sec-remarks" class="content-sec hidden space-y-6">
                     <h3 class="font-black uppercase text-emerald-600">Behavioral Log</h3>
                     <div id="remarks-list" class="bg-white rounded-[2rem] border divide-y shadow-sm overflow-hidden"></div>
                 </section>
+
                 <section id="sec-admin" class="content-sec hidden space-y-6">
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm">
+                        <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm no-print">
                             <h3 class="font-black uppercase mb-6 text-amber-500">Grant Staff Access</h3>
                             <form id="form-add-teacher" class="space-y-4">
                                 <input type="text" id="t-name" placeholder="Full Name" class="w-full p-4 bg-slate-50 border rounded-2xl text-sm focus:outline-indigo-500" required>
@@ -345,6 +376,11 @@
         </div>
     </div>
 
+    <script>
+        document.getElementById('print-date').innerText = new Date().toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        });
+    </script>
     <script src="dashboard.js"></script>
 </body>
 </html>
